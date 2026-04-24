@@ -40,7 +40,7 @@ class AnsibleServiceTest {
     }
 
     private WebhookProperties props(String folder, String limit, String tags) {
-        return new WebhookProperties("test-secret", folder, "inventory", "site.yml", limit, tags);
+        return new WebhookProperties("test-secret", folder, "inventory", "site.yml", limit, tags, null);
     }
 
     // Ansible-Output landet unverändert als Mono-Ergebnis.
@@ -100,7 +100,7 @@ class AnsibleServiceTest {
         doReturn(pb).when(service).newProcessBuilder(cmdCaptor.capture());
 
         StepVerifier.create(service.execute("play",
-                new WebhookProperties("test-secret", "/tmp", "inventory", "site.yml", "web", "deploy")))
+                new WebhookProperties("test-secret", "/tmp", "inventory", "site.yml", "web", "deploy", null)))
                 .expectNextCount(1)
                 .verifyComplete();
 
@@ -117,13 +117,13 @@ class AnsibleServiceTest {
         doReturn(pb).when(service).newProcessBuilder(cmdCaptor.capture());
 
         StepVerifier.create(service.execute("play",
-                new WebhookProperties("test-secret", "/tmp", "inventory", "site.yml", " ", null)))
+                new WebhookProperties("test-secret", "/tmp", "inventory", "site.yml", " ", null, null)))
                 .expectNextCount(1)
                 .verifyComplete();
 
         assertThat(cmdCaptor.getValue())
                 .containsExactly("ansible-playbook", "-i", "inventory", "site.yml")
-                .doesNotContain("--limit", "--tags");
+                .doesNotContain("--limit", "--tags", "--extra-vars");
     }
 
     // "~" allein wird zu user.home aufgelöst.
@@ -168,6 +168,42 @@ class AnsibleServiceTest {
         ArgumentCaptor<File> dirCaptor = ArgumentCaptor.forClass(File.class);
         verify(pb).directory(dirCaptor.capture());
         assertThat(dirCaptor.getValue().getAbsolutePath()).isEqualTo("/opt/ansible");
+    }
+
+    // isRunning() gibt true zurück solange der Mono noch nicht abgeschlossen ist.
+    @Test
+    void isRunning_returnsTrueWhileExecuting() {
+        assertThat(service.isRunning("play")).isFalse();
+        service.execute("play", props("/tmp", null, null)); // nicht subscribed → Slot trotzdem belegt
+        assertThat(service.isRunning("play")).isTrue();
+    }
+
+    // Nach Abschluss des Mono ist der Slot wieder frei.
+    @Test
+    void isRunning_returnsFalse_afterCompletion() throws Exception {
+        givenOutput("", 0);
+        assertThat(service.isRunning("play")).isFalse();
+        StepVerifier.create(service.execute("play", props("/tmp", null, null)))
+                .expectNextCount(1)
+                .verifyComplete();
+        assertThat(service.isRunning("play")).isFalse();
+    }
+
+    // --extra-vars erscheint am Ende des Kommandos wenn gesetzt.
+    @Test
+    @SuppressWarnings("unchecked")
+    void buildCommand_includesExtraVars() throws Exception {
+        givenOutput("", 0);
+        ArgumentCaptor<List<String>> cmdCaptor = ArgumentCaptor.forClass(List.class);
+        doReturn(pb).when(service).newProcessBuilder(cmdCaptor.capture());
+
+        StepVerifier.create(service.execute("play",
+                new WebhookProperties("test-secret", "/tmp", "inventory", "site.yml", null, null, "env=prod")))
+                .expectNextCount(1)
+                .verifyComplete();
+
+        assertThat(cmdCaptor.getValue()).containsExactly(
+                "ansible-playbook", "-i", "inventory", "site.yml", "--extra-vars", "env=prod");
     }
 
     // redirectErrorStream(true) muss gesetzt sein, damit Stderr im Fehlerfall im Response-Body landet.

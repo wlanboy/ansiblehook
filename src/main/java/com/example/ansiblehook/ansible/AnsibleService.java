@@ -70,6 +70,9 @@ public class AnsibleService {
         if (props.tags() != null && !props.tags().isBlank()) {
             cmd.addAll(List.of("--tags", props.tags()));
         }
+        if (props.extraVars() != null && !props.extraVars().isBlank()) {
+            cmd.addAll(List.of("--extra-vars", props.extraVars()));
+        }
         return cmd;
     }
 

@@ -16,6 +16,7 @@ ansiblehook:
       playbook: playbooks/site.yml
       limit: myhost             # optional: --limit
       tags: all                 # optional: --tags
+      extra-vars: "env=prod"    # optional: --extra-vars
 ```
 
 Der Map-Key (`mein-webhook`) ist gleichzeitig die URL-ID. Das `secret` wird ausschließlich über den HTTP-Header übermittelt, nicht über die URL.
@@ -23,7 +24,7 @@ Der Map-Key (`mein-webhook`) ist gleichzeitig die URL-ID. Das `secret` wird auss
 Der resultierende Befehl:
 
 ```
-ansible-playbook -i hosts playbooks/site.yml --limit myhost --tags all
+ansible-playbook -i hosts playbooks/site.yml --limit myhost --tags all --extra-vars "env=prod"
 ```
 
 ## Start

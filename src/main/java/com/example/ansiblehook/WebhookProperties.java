@@ -6,5 +6,6 @@ public record WebhookProperties(
         String hosts,
         String playbook,
         String limit,
-        String tags
+        String tags,
+        String extraVars
 ) {}
