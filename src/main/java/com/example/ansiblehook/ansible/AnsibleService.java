@@ -8,6 +8,7 @@ import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
 
 import java.io.File;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -34,7 +35,7 @@ public class AnsibleService {
         pb.redirectErrorStream(true);
 
         Process process = pb.start();
-        String output = new String(process.getInputStream().readAllBytes());
+        String output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
         int exitCode = process.waitFor();
 
         if (exitCode != 0) {
@@ -57,8 +58,8 @@ public class AnsibleService {
     }
 
     private File resolveFolder(String folder) {
-        String path = folder.startsWith("~/")
-                ? System.getProperty("user.home") + folder.substring(1)
+        String path = folder.equals("~") ? System.getProperty("user.home")
+                : folder.startsWith("~/") ? System.getProperty("user.home") + folder.substring(1)
                 : folder;
         return Path.of(path).toFile();
     }
