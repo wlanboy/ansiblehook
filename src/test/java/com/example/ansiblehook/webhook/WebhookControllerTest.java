@@ -6,14 +6,15 @@ import com.example.ansiblehook.ansible.AnsibleService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
-// Tests für die HMAC-Validierungslogik (package-private validHmac()).
-// Kein Spring-Kontext nötig.
 class WebhookControllerTest {
 
     private static final String SECRET = "test-secret";
@@ -24,59 +25,81 @@ class WebhookControllerTest {
     void setUp() {
         AnsiblehookProperties props = mock(AnsiblehookProperties.class);
         when(props.webhooks()).thenReturn(Map.of("test",
-                new WebhookProperties(SECRET, "/tmp", "hosts", "site.yml", null, null, null, null)));
+                new WebhookProperties(SECRET, "/tmp", "hosts", "site.yml",
+                        null, null, null, null)));
+
         controller = new WebhookController(props, mock(AnsibleService.class));
     }
 
-    // Korrekte Signatur über leeren Body muss akzeptiert werden.
+    // ------------------------------------------------------------
+    // HMAC TESTS (HMAC(secret, timestamp))
+    // ------------------------------------------------------------
+
     @Test
-    void validHmac_acceptsCorrectSignatureForEmptyBody() {
-        String sig = hmac(SECRET, "");
-        assertThat(controller.validHmac(SECRET, "", sig)).isTrue();
+    void validHmac_acceptsCorrectSignature() {
+        String ts = "1713980000";
+        String sig = hmac(SECRET, ts);
+        assertThat(controller.validHmac(SECRET, ts.getBytes(StandardCharsets.UTF_8), sig)).isTrue();
     }
 
-    // Korrekte Signatur über JSON-Body muss akzeptiert werden.
-    @Test
-    void validHmac_acceptsCorrectSignatureForJsonBody() {
-        String body = "{\"ref\":\"refs/heads/main\"}";
-        assertThat(controller.validHmac(SECRET, body, hmac(SECRET, body))).isTrue();
-    }
-
-    // Falsches Secret ergibt anderen Hash → ablehnen.
     @Test
     void validHmac_rejectsWrongSecret() {
-        String body = "payload";
-        assertThat(controller.validHmac("wrong-secret", body, hmac(SECRET, body))).isFalse();
+        String ts = "1713980000";
+        String sig = hmac(SECRET, ts);
+        assertThat(controller.validHmac("wrong-secret", ts.getBytes(StandardCharsets.UTF_8), sig)).isFalse();
     }
 
-    // Manipulierter Body ergibt anderen Hash → ablehnen.
     @Test
-    void validHmac_rejectsTamperedBody() {
-        String sig = hmac(SECRET, "original");
-        assertThat(controller.validHmac(SECRET, "tampered", sig)).isFalse();
+    void validHmac_rejectsTamperedTimestamp() {
+        String ts = "1713980000";
+        String sig = hmac(SECRET, ts);
+        assertThat(controller.validHmac(SECRET, "1713980001".getBytes(StandardCharsets.UTF_8), sig)).isFalse();
     }
 
-    // Fehlendes Signatur-Header → ablehnen.
     @Test
     void validHmac_rejectsNullSignature() {
-        assertThat(controller.validHmac(SECRET, "", null)).isFalse();
+        String ts = "1713980000";
+        assertThat(controller.validHmac(SECRET, ts.getBytes(StandardCharsets.UTF_8), null)).isFalse();
     }
 
-    // Signatur ohne "sha256="-Präfix → ablehnen.
     @Test
     void validHmac_rejectsMissingPrefix() {
-        String raw = hmac(SECRET, "").substring("sha256=".length());
-        assertThat(controller.validHmac(SECRET, "", raw)).isFalse();
+        String ts = "1713980000";
+        String raw = hmac(SECRET, ts).substring("sha256=".length());
+        assertThat(controller.validHmac(SECRET, ts.getBytes(StandardCharsets.UTF_8), raw)).isFalse();
     }
 
-    // Hilfsmethode: erzeugt dieselbe Signatur wie der Controller (für Test-Fixtures).
-    static String hmac(String secret, String body) {
+    // ------------------------------------------------------------
+    // TIMESTAMP TESTS
+    // ------------------------------------------------------------
+
+    @Test
+    void validTimestamp_acceptsFreshTimestamp() {
+        long now = Instant.now().getEpochSecond();
+        assertThat(controller.validTimestamp(String.valueOf(now))).isTrue();
+    }
+
+    @Test
+    void validTimestamp_rejectsOldTimestamp() {
+        long old = Instant.now().minus(Duration.ofMinutes(10)).getEpochSecond();
+        assertThat(controller.validTimestamp(String.valueOf(old))).isFalse();
+    }
+
+    @Test
+    void validTimestamp_rejectsInvalidFormat() {
+        assertThat(controller.validTimestamp("not-a-number")).isFalse();
+    }
+
+    // ------------------------------------------------------------
+    // Hilfsmethode: erzeugt dieselbe Signatur wie der Controller
+    // ------------------------------------------------------------
+    static String hmac(String secret, String message) {
         try {
             javax.crypto.Mac mac = javax.crypto.Mac.getInstance("HmacSHA256");
             mac.init(new javax.crypto.spec.SecretKeySpec(
-                    secret.getBytes(java.nio.charset.StandardCharsets.UTF_8), "HmacSHA256"));
-            return "sha256=" + java.util.HexFormat.of().formatHex(
-                    mac.doFinal(body.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+                    secret.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
+            byte[] hash = mac.doFinal(message.getBytes(StandardCharsets.UTF_8));
+            return "sha256=" + java.util.HexFormat.of().formatHex(hash);
         } catch (Exception e) {
             throw new RuntimeException(e);
         }

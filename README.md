@@ -44,35 +44,37 @@ Signatur berechnen (Bash):
 
 ```bash
 SECRET="7f3d9a12-b4c8-4e1f-9d6a-123456789abc"
-BODY=""
-SIG="sha256=$(echo -n "$BODY" | openssl dgst -sha256 -hmac "$SECRET" | awk '{print $2}')"
+TS=$(date +%s)
+
+SIG="sha256=$(echo -n "$TS" \
+  | openssl dgst -sha256 -hmac "$SECRET" \
+  | awk '{print $2}')"
 ```
 
 ### ping (leerer Body)
 
 ```bash
-SECRET="7f3d9a12-b4c8-4e1f-9d6a-123456789abc"
-SIG="sha256=$(echo -n "" | openssl dgst -sha256 -hmac "$SECRET" | awk '{print $2}')"
 curl -X POST http://localhost:8080/webhook/ping \
-  -H "X-Hub-Signature-256: $SIG"
+  -H "X-Webhook-Signature: $SIG" \
+  -H "X-Webhook-Timestamp: $TS"
 ```
 
 ### Mit Ausgabe in Datei
 
 ```bash
-SECRET="550e8400-e29b-41d4-a716-446655440000"
-SIG="sha256=$(echo -n "" | openssl dgst -sha256 -hmac "$SECRET" | awk '{print $2}')"
-curl -X POST http://localhost:8080/webhook/apt-update \
-  -H "X-Hub-Signature-256: $SIG" \
+curl -X POST http://localhost:8080/webhook/ping \
+  -H "X-Webhook-Signature: $SIG" \
+  -H "X-Webhook-Timestamp: $TS" \
   --output ansible.log
 ```
 
 ## Status abfragen
 
 ```bash
-curl http://localhost:8080/webhook/apt-update/status \
-  -H "X-Webhook-Secret: 550e8400-e29b-41d4-a716-446655440000"
-# {"id":"apt-update","running":false}
+curl -X GET http://localhost:8080/webhook/ping/status \
+  -H "X-Webhook-Signature: $SIG" \
+  -H "X-Webhook-Timestamp: $TS"
+# {"id":"ping","running":false}
 ```
 
 Gibt `401` bei fehlendem/falschem Secret und `404` bei unbekannter Webhook-ID zurück.
