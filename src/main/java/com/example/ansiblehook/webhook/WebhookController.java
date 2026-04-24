@@ -1,9 +1,13 @@
 package com.example.ansiblehook.webhook;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.example.ansiblehook.ansible.AnsibleService;
@@ -14,10 +18,14 @@ import com.example.ansiblehook.WebhookProperties;
 
 import reactor.core.publisher.Mono;
 
+import java.security.MessageDigest;
+import java.nio.charset.StandardCharsets;
 import java.util.Map;
 
 @RestController
 public class WebhookController {
+
+    private static final Logger log = LoggerFactory.getLogger(WebhookController.class);
 
     private final Map<String, WebhookProperties> webhooks;
     private final AnsibleService ansibleService;
@@ -28,16 +36,39 @@ public class WebhookController {
     }
 
     @PostMapping("/webhook/{id}")
-    public Mono<ResponseEntity<String>> trigger(@PathVariable String id) {
-        return webhooks.entrySet().stream()
-                .filter(e -> e.getValue().id().equals(id))
-                .findFirst()
-                .map(e -> ansibleService.execute(e.getKey(), e.getValue())
-                        .map(output -> ResponseEntity.ok(output))
-                        .onErrorResume(PlaybookAlreadyRunningException.class,
-                                ex -> Mono.just(ResponseEntity.status(HttpStatus.CONFLICT).body(ex.getMessage())))
-                        .onErrorResume(PlaybookFailedException.class,
-                                ex -> Mono.just(ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(ex.getOutput()))))
-                .orElse(Mono.just(ResponseEntity.notFound().build()));
+    public Mono<ResponseEntity<String>> trigger(
+            @PathVariable String id,
+            @RequestHeader(value = "X-Webhook-Secret", required = false) String secret,
+            @RequestBody(required = false) Mono<String> bodyMono) {
+
+        WebhookProperties props = webhooks.get(id);
+        if (props == null) {
+            log.warn("Webhook '{}' not found", id);
+            return Mono.just(ResponseEntity.notFound().build());
+        }
+        if (!validSecret(props.secret(), secret)) {
+            log.warn("Webhook '{}' rejected: invalid or missing secret", id);
+            return Mono.just(ResponseEntity.status(HttpStatus.UNAUTHORIZED).build());
+        }
+
+        Mono<String> safeBody = bodyMono != null ? bodyMono.defaultIfEmpty("") : Mono.just("");
+
+        return safeBody.flatMap(payload -> {
+            log.info("Webhook '{}' triggered, payload size: {} bytes", id, payload.length());
+            return ansibleService.execute(id, props)
+                    .map(ResponseEntity::ok)
+                    .onErrorResume(PlaybookAlreadyRunningException.class,
+                            ex -> Mono.just(ResponseEntity.status(HttpStatus.CONFLICT).body(ex.getMessage())))
+                    .onErrorResume(PlaybookFailedException.class,
+                            ex -> Mono.just(ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(ex.getOutput())));
+        });
+    }
+
+    // Constant-time comparison to prevent timing attacks
+    private boolean validSecret(String expected, String actual) {
+        if (actual == null) return false;
+        return MessageDigest.isEqual(
+                expected.getBytes(StandardCharsets.UTF_8),
+                actual.getBytes(StandardCharsets.UTF_8));
     }
 }
