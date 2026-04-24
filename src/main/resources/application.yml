@@ -5,14 +5,14 @@ spring:
 ansiblehook:
   webhooks:
     apt-update:
-      id: 550e8400-e29b-41d4-a716-446655440000
+      secret: 550e8400-e29b-41d4-a716-446655440000
       folder: ~/git/ansiblehosts
       hosts: hosts
       playbook: playbooks/echo.yml
       limit: gmk
       tags: all
     ping:
-      id: 7f3d9a12-b4c8-4e1f-9d6a-123456789abc
+      secret: 7f3d9a12-b4c8-4e1f-9d6a-123456789abc
       folder: ~/git/ansiblehosts
       hosts: hosts
       playbook: playbooks/ping.yml
