@@ -19,8 +19,13 @@ import com.example.ansiblehook.WebhookProperties;
 
 import reactor.core.publisher.Mono;
 
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
+import java.security.InvalidKeyException;
 import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.nio.charset.StandardCharsets;
+import java.util.HexFormat;
 import java.util.Map;
 
 @RestController
@@ -57,7 +62,7 @@ public class WebhookController {
     @PostMapping("/webhook/{id}")
     public Mono<ResponseEntity<String>> trigger(
             @PathVariable String id,
-            @RequestHeader(value = "X-Webhook-Secret", required = false) String secret,
+            @RequestHeader(value = "X-Hub-Signature-256", required = false) String signature,
             @RequestBody(required = false) Mono<String> bodyMono) {
 
         WebhookProperties props = webhooks.get(id);
@@ -65,14 +70,14 @@ public class WebhookController {
             log.warn("Webhook '{}' not found", id);
             return Mono.just(ResponseEntity.notFound().build());
         }
-        if (!validSecret(props.secret(), secret)) {
-            log.warn("Webhook '{}' rejected: invalid or missing secret", id);
-            return Mono.just(ResponseEntity.status(HttpStatus.UNAUTHORIZED).build());
-        }
 
         Mono<String> safeBody = bodyMono != null ? bodyMono.defaultIfEmpty("") : Mono.just("");
 
         return safeBody.flatMap(payload -> {
+            if (!validHmac(props.secret(), payload, signature)) {
+                log.warn("Webhook '{}' rejected: invalid or missing HMAC signature", id);
+                return Mono.just(ResponseEntity.status(HttpStatus.UNAUTHORIZED).<String>build());
+            }
             log.info("Webhook '{}' triggered, payload size: {} bytes", id, payload.length());
             return ansibleService.execute(id, props)
                     .map(ResponseEntity::ok)
@@ -83,7 +88,22 @@ public class WebhookController {
         });
     }
 
-    // Constant-time comparison to prevent timing attacks
+    // package-private for testing
+    boolean validHmac(String secret, String body, String signature) {
+        if (signature == null || !signature.startsWith("sha256=")) return false;
+        try {
+            Mac mac = Mac.getInstance("HmacSHA256");
+            mac.init(new SecretKeySpec(secret.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
+            String expected = "sha256=" + HexFormat.of().formatHex(mac.doFinal(body.getBytes(StandardCharsets.UTF_8)));
+            return MessageDigest.isEqual(
+                    expected.getBytes(StandardCharsets.UTF_8),
+                    signature.getBytes(StandardCharsets.UTF_8));
+        } catch (NoSuchAlgorithmException | InvalidKeyException e) {
+            log.error("HMAC validation error for webhook '{}'", secret, e);
+            return false;
+        }
+    }
+
     private boolean validSecret(String expected, String actual) {
         if (actual == null) return false;
         return MessageDigest.isEqual(

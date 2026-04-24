@@ -1,6 +1,6 @@
 # ansiblehook
 
-HTTP-Webhook-Service zum Auslösen von Ansible-Playbooks. Jeder Webhook ist per Secret-Header (`X-Webhook-Secret`) gesichert. Läuft ein Playbook bereits, wird ein zweiter Request mit `409 Conflict` abgelehnt. Die vollständigen Ansible-Logs werden als Response-Body zurückgegeben.
+HTTP-Webhook-Service zum Auslösen von Ansible-Playbooks. Trigger-Requests werden per HMAC-SHA256-Signatur (`X-Hub-Signature-256`) authentifiziert — kompatibel zu GitHub/GitLab Webhooks. Läuft ein Playbook bereits, wird ein zweiter Request mit `409 Conflict` abgelehnt. Die vollständigen Ansible-Logs werden als Response-Body zurückgegeben.
 
 ## Konfiguration
 
@@ -10,7 +10,7 @@ Webhooks werden in `src/main/resources/application.yml` definiert:
 ansiblehook:
   webhooks:
     mein-webhook:               # URL-Pfad: POST /webhook/mein-webhook
-      secret: <geheimes-token>  # Pflichtfeld: Header X-Webhook-Secret
+      secret: <geheimes-token>  # Pflichtfeld: HMAC-Key für X-Hub-Signature-256
       folder: ~/git/repo        # Arbeitsverzeichnis für ansible-playbook
       hosts: hosts              # Inventory-Datei (-i)
       playbook: playbooks/site.yml
@@ -20,7 +20,7 @@ ansiblehook:
       vault-password-file: ~/.vault_pass  # optional: --vault-password-file
 ```
 
-Der Map-Key (`mein-webhook`) ist gleichzeitig die URL-ID. Das `secret` wird ausschließlich über den HTTP-Header übermittelt, nicht über die URL.
+Der Map-Key (`mein-webhook`) ist gleichzeitig die URL-ID. Das `secret` ist der HMAC-Key — es wird nie direkt übertragen.
 
 Der resultierende Befehl:
 
@@ -38,29 +38,44 @@ Der Service startet auf Port `8080`.
 
 ## Webhooks aufrufen
 
-Jeder Request muss den Header `X-Webhook-Secret` mit dem konfigurierten Secret mitschicken. Optional kann ein JSON-Payload im Body mitgegeben werden (wird geloggt).
+Trigger-Requests werden per `X-Hub-Signature-256`-Header authentifiziert. Der Header enthält eine HMAC-SHA256-Signatur des Request-Bodys, kompatibel zum GitHub/GitLab Webhook-Format.
 
-### ping (ohne Tags)
+Signatur berechnen (Bash):
 
 ```bash
+SECRET="7f3d9a12-b4c8-4e1f-9d6a-123456789abc"
+BODY=""
+SIG="sha256=$(echo -n "$BODY" | openssl dgst -sha256 -hmac "$SECRET" | awk '{print $2}')"
+```
+
+### ping (leerer Body)
+
+```bash
+SECRET="7f3d9a12-b4c8-4e1f-9d6a-123456789abc"
+SIG="sha256=$(echo -n "" | openssl dgst -sha256 -hmac "$SECRET" | awk '{print $2}')"
 curl -X POST http://localhost:8080/webhook/ping \
-  -H "X-Webhook-Secret: 7f3d9a12-b4c8-4e1f-9d6a-123456789abc"
+  -H "X-Hub-Signature-256: $SIG"
 ```
 
 ### Mit JSON-Payload (z.B. von GitHub/GitLab)
 
 ```bash
+SECRET="550e8400-e29b-41d4-a716-446655440000"
+BODY='{"ref":"refs/heads/main"}'
+SIG="sha256=$(echo -n "$BODY" | openssl dgst -sha256 -hmac "$SECRET" | awk '{print $2}')"
 curl -X POST http://localhost:8080/webhook/apt-update \
-  -H "X-Webhook-Secret: 550e8400-e29b-41d4-a716-446655440000" \
+  -H "X-Hub-Signature-256: $SIG" \
   -H "Content-Type: application/json" \
-  -d '{"ref": "refs/heads/main"}'
+  -d "$BODY"
 ```
 
 ### Mit Ausgabe in Datei
 
 ```bash
+SECRET="550e8400-e29b-41d4-a716-446655440000"
+SIG="sha256=$(echo -n "" | openssl dgst -sha256 -hmac "$SECRET" | awk '{print $2}')"
 curl -X POST http://localhost:8080/webhook/apt-update \
-  -H "X-Webhook-Secret: 550e8400-e29b-41d4-a716-446655440000" \
+  -H "X-Hub-Signature-256: $SIG" \
   --output ansible.log
 ```
 
@@ -79,7 +94,7 @@ Gibt `401` bei fehlendem/falschem Secret und `404` bei unbekannter Webhook-ID zu
 | Status | Bedeutung |
 |--------|-----------|
 | `200 OK` | Playbook erfolgreich — Body enthält die Ansible-Logs |
-| `401 Unauthorized` | Fehlender oder falscher `X-Webhook-Secret`-Header |
+| `401 Unauthorized` | Fehlende oder ungültige `X-Hub-Signature-256`-Signatur (Trigger) / falsches `X-Webhook-Secret` (Status) |
 | `404 Not Found` | Unbekannte Webhook-ID |
 | `409 Conflict` | Playbook läuft bereits |
 | `500 Internal Server Error` | Playbook fehlgeschlagen — Body enthält trotzdem die Logs |
