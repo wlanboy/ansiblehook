@@ -24,6 +24,10 @@ public class AnsibleService {
 
     private final Set<String> running = ConcurrentHashMap.newKeySet();
 
+    public boolean isRunning(String name) {
+        return running.contains(name);
+    }
+
     public Mono<String> execute(String name, WebhookProperties props) {
         if (!running.add(name)) {
             log.warn("Playbook '{}' is already running, rejecting trigger", name);

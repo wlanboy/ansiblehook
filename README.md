@@ -69,6 +69,16 @@ curl -X POST http://localhost:8080/webhook/apt-update \
   --output ansible.log
 ```
 
+## Status abfragen
+
+```bash
+curl http://localhost:8080/webhook/apt-update/status \
+  -H "X-Webhook-Secret: 550e8400-e29b-41d4-a716-446655440000"
+# {"id":"apt-update","running":false}
+```
+
+Gibt `401` bei fehlendem/falschem Secret und `404` bei unbekannter Webhook-ID zurück.
+
 ## HTTP-Statuscodes
 
 | Status | Bedeutung |

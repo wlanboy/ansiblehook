@@ -4,6 +4,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -33,6 +34,24 @@ public class WebhookController {
     public WebhookController(AnsiblehookProperties properties, AnsibleService ansibleService) {
         this.webhooks = properties.webhooks();
         this.ansibleService = ansibleService;
+    }
+
+    @GetMapping("/webhook/{id}/status")
+    public ResponseEntity<Map<String, Object>> status(
+            @PathVariable String id,
+            @RequestHeader(value = "X-Webhook-Secret", required = false) String secret) {
+        WebhookProperties props = webhooks.get(id);
+        if (props == null) {
+            log.warn("Status check for unknown webhook '{}'", id);
+            return ResponseEntity.notFound().build();
+        }
+        if (!validSecret(props.secret(), secret)) {
+            log.warn("Status check for webhook '{}' rejected: invalid or missing secret", id);
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+        boolean running = ansibleService.isRunning(id);
+        log.debug("Status check for webhook '{}': running={}", id, running);
+        return ResponseEntity.ok(Map.of("id", id, "running", running));
     }
 
     @PostMapping("/webhook/{id}")
