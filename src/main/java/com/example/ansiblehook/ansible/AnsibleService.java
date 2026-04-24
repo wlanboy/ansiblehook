@@ -1,0 +1,65 @@
+package com.example.ansiblehook.ansible;
+
+import org.springframework.stereotype.Service;
+
+import com.example.ansiblehook.WebhookProperties;
+
+import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers;
+
+import java.io.File;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+
+@Service
+public class AnsibleService {
+
+    private final Set<String> running = ConcurrentHashMap.newKeySet();
+
+    public Mono<String> execute(String name, WebhookProperties props) {
+        if (!running.add(name)) {
+            return Mono.error(new PlaybookAlreadyRunningException(name));
+        }
+        return Mono.fromCallable(() -> runPlaybook(props))
+                .subscribeOn(Schedulers.boundedElastic())
+                .doFinally(signal -> running.remove(name));
+    }
+
+    private String runPlaybook(WebhookProperties props) throws Exception {
+        ProcessBuilder pb = new ProcessBuilder(buildCommand(props));
+        pb.directory(resolveFolder(props.folder()));
+        pb.redirectErrorStream(true);
+
+        Process process = pb.start();
+        String output = new String(process.getInputStream().readAllBytes());
+        int exitCode = process.waitFor();
+
+        if (exitCode != 0) {
+            throw new PlaybookFailedException(output, exitCode);
+        }
+        return output;
+    }
+
+    private List<String> buildCommand(WebhookProperties props) {
+        List<String> cmd = new ArrayList<>(List.of(
+                "ansible-playbook", "-i", props.hosts(), props.playbook()
+        ));
+        if (props.limit() != null && !props.limit().isBlank()) {
+            cmd.addAll(List.of("--limit", props.limit()));
+        }
+        if (props.tags() != null && !props.tags().isBlank()) {
+            cmd.addAll(List.of("--tags", props.tags()));
+        }
+        return cmd;
+    }
+
+    private File resolveFolder(String folder) {
+        String path = folder.startsWith("~/")
+                ? System.getProperty("user.home") + folder.substring(1)
+                : folder;
+        return Path.of(path).toFile();
+    }
+}
