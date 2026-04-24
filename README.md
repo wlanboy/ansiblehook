@@ -57,18 +57,6 @@ curl -X POST http://localhost:8080/webhook/ping \
   -H "X-Hub-Signature-256: $SIG"
 ```
 
-### Mit JSON-Payload (z.B. von GitHub/GitLab)
-
-```bash
-SECRET="550e8400-e29b-41d4-a716-446655440000"
-BODY='{"ref":"refs/heads/main"}'
-SIG="sha256=$(echo -n "$BODY" | openssl dgst -sha256 -hmac "$SECRET" | awk '{print $2}')"
-curl -X POST http://localhost:8080/webhook/apt-update \
-  -H "X-Hub-Signature-256: $SIG" \
-  -H "Content-Type: application/json" \
-  -d "$BODY"
-```
-
 ### Mit Ausgabe in Datei
 
 ```bash
