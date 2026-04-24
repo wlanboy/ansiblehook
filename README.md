@@ -17,6 +17,7 @@ ansiblehook:
       limit: myhost             # optional: --limit
       tags: all                 # optional: --tags
       extra-vars: "env=prod"    # optional: --extra-vars
+      vault-password-file: ~/.vault_pass  # optional: --vault-password-file
 ```
 
 Der Map-Key (`mein-webhook`) ist gleichzeitig die URL-ID. Das `secret` wird ausschließlich über den HTTP-Header übermittelt, nicht über die URL.
@@ -38,13 +39,6 @@ Der Service startet auf Port `8080`.
 ## Webhooks aufrufen
 
 Jeder Request muss den Header `X-Webhook-Secret` mit dem konfigurierten Secret mitschicken. Optional kann ein JSON-Payload im Body mitgegeben werden (wird geloggt).
-
-### apt-update (mit Limit und Tags)
-
-```bash
-curl -X POST http://localhost:8080/webhook/apt-update \
-  -H "X-Webhook-Secret: 550e8400-e29b-41d4-a716-446655440000"
-```
 
 ### ping (ohne Tags)
 

@@ -40,7 +40,7 @@ class AnsibleServiceTest {
     }
 
     private WebhookProperties props(String folder, String limit, String tags) {
-        return new WebhookProperties("test-secret", folder, "inventory", "site.yml", limit, tags, null);
+        return new WebhookProperties("test-secret", folder, "inventory", "site.yml", limit, tags, null, null);
     }
 
     // Ansible-Output landet unverändert als Mono-Ergebnis.
@@ -100,7 +100,7 @@ class AnsibleServiceTest {
         doReturn(pb).when(service).newProcessBuilder(cmdCaptor.capture());
 
         StepVerifier.create(service.execute("play",
-                new WebhookProperties("test-secret", "/tmp", "inventory", "site.yml", "web", "deploy", null)))
+                new WebhookProperties("test-secret", "/tmp", "inventory", "site.yml", "web", "deploy", null, null)))
                 .expectNextCount(1)
                 .verifyComplete();
 
@@ -117,7 +117,7 @@ class AnsibleServiceTest {
         doReturn(pb).when(service).newProcessBuilder(cmdCaptor.capture());
 
         StepVerifier.create(service.execute("play",
-                new WebhookProperties("test-secret", "/tmp", "inventory", "site.yml", " ", null, null)))
+                new WebhookProperties("test-secret", "/tmp", "inventory", "site.yml", " ", null, null, null)))
                 .expectNextCount(1)
                 .verifyComplete();
 
@@ -198,12 +198,29 @@ class AnsibleServiceTest {
         doReturn(pb).when(service).newProcessBuilder(cmdCaptor.capture());
 
         StepVerifier.create(service.execute("play",
-                new WebhookProperties("test-secret", "/tmp", "inventory", "site.yml", null, null, "env=prod")))
+                new WebhookProperties("test-secret", "/tmp", "inventory", "site.yml", null, null, "env=prod", null)))
                 .expectNextCount(1)
                 .verifyComplete();
 
         assertThat(cmdCaptor.getValue()).containsExactly(
                 "ansible-playbook", "-i", "inventory", "site.yml", "--extra-vars", "env=prod");
+    }
+
+    // --vault-password-file erscheint im Kommando wenn gesetzt.
+    @Test
+    @SuppressWarnings("unchecked")
+    void buildCommand_includesVaultPasswordFile() throws Exception {
+        givenOutput("", 0);
+        ArgumentCaptor<List<String>> cmdCaptor = ArgumentCaptor.forClass(List.class);
+        doReturn(pb).when(service).newProcessBuilder(cmdCaptor.capture());
+
+        StepVerifier.create(service.execute("play",
+                new WebhookProperties("test-secret", "/tmp", "inventory", "site.yml", null, null, null, "/run/secrets/vault_pass")))
+                .expectNextCount(1)
+                .verifyComplete();
+
+        assertThat(cmdCaptor.getValue()).containsExactly(
+                "ansible-playbook", "-i", "inventory", "site.yml", "--vault-password-file", "/run/secrets/vault_pass");
     }
 
     // redirectErrorStream(true) muss gesetzt sein, damit Stderr im Fehlerfall im Response-Body landet.

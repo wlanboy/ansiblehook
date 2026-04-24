@@ -11,6 +11,7 @@ ansiblehook:
       playbook: playbooks/echo.yml
       limit: gmk
       tags: all
+      extra-vars: "env=prod"
     ping:
       secret: 7f3d9a12-b4c8-4e1f-9d6a-123456789abc
       folder: ~/git/ansiblehosts

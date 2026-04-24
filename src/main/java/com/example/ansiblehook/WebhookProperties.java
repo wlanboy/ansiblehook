@@ -7,5 +7,6 @@ public record WebhookProperties(
         String playbook,
         String limit,
         String tags,
-        String extraVars
+        String extraVars,
+        String vaultPasswordFile
 ) {}

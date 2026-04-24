@@ -73,6 +73,9 @@ public class AnsibleService {
         if (props.extraVars() != null && !props.extraVars().isBlank()) {
             cmd.addAll(List.of("--extra-vars", props.extraVars()));
         }
+        if (props.vaultPasswordFile() != null && !props.vaultPasswordFile().isBlank()) {
+            cmd.addAll(List.of("--vault-password-file", props.vaultPasswordFile()));
+        }
         return cmd;
     }
 
