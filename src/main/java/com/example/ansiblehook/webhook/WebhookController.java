@@ -99,7 +99,7 @@ public class WebhookController {
                     expected.getBytes(StandardCharsets.UTF_8),
                     signature.getBytes(StandardCharsets.UTF_8));
         } catch (NoSuchAlgorithmException | InvalidKeyException e) {
-            log.error("HMAC validation error for webhook '{}'", secret, e);
+            log.error("HMAC validation error for webhook '{}'", secret.length(), e);
             return false;
         }
     }
