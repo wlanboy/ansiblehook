@@ -19,8 +19,8 @@ NC='\033[0m'
 ts()  { date +%s; }
 
 sig() {
-  local t="$1"
-  printf 'sha256=%s' "$(printf '%s' "$t" | openssl dgst -sha256 -hmac "$SECRET" | awk '{print $2}')"
+  local t="$1" id="$2"
+  printf 'sha256=%s' "$(printf '%s' "${t}.${id}" | openssl dgst -sha256 -hmac "$SECRET" | awk '{print $2}')"
 }
 
 get() {
@@ -82,7 +82,7 @@ printf "Teste gegen %s\n" "$BASE_URL"
 
 section "POST /webhook/$WEBHOOK — Auth-Fehler"
 
-TS=$(ts); SIG=$(sig "$TS")
+TS=$(ts); SIG=$(sig "$TS" "$WEBHOOK")
 CODE=$(post "$BASE_URL/webhook/$WEBHOOK")
 check "Kein Auth-Header → 401" "401" "$CODE"
 
@@ -92,7 +92,7 @@ CODE=$(post "$BASE_URL/webhook/$WEBHOOK" \
 check "Falsche Signatur → 401" "401" "$CODE"
 
 OLD_TS=$(($(ts) - 400))
-OLD_SIG=$(sig "$OLD_TS")
+OLD_SIG=$(sig "$OLD_TS" "$WEBHOOK")
 CODE=$(post "$BASE_URL/webhook/$WEBHOOK" \
   -H "X-Webhook-Timestamp: $OLD_TS" \
   -H "X-Webhook-Signature: $OLD_SIG")
@@ -108,7 +108,7 @@ check "Ungültiger Token → 401" "401" "$CODE"
 
 section "POST /webhook/doesnotexist — 404"
 
-TS=$(ts); SIG=$(sig "$TS")
+TS=$(ts); SIG=$(sig "$TS" "doesnotexist")
 CODE=$(post "$BASE_URL/webhook/doesnotexist" \
   -H "X-Webhook-Timestamp: $TS" \
   -H "X-Webhook-Signature: $SIG")
@@ -120,7 +120,7 @@ check "Unbekannte Webhook-ID → 404" "404" "$CODE"
 
 section "POST /webhook/$WEBHOOK — Auslösen (200 ok, 500 falls Ansible fehlt)"
 
-TS=$(ts); SIG=$(sig "$TS")
+TS=$(ts); SIG=$(sig "$TS" "$WEBHOOK")
 CODE=$(post "$BASE_URL/webhook/$WEBHOOK" \
   -H "X-Webhook-Timestamp: $TS" \
   -H "X-Webhook-Signature: $SIG")
@@ -135,14 +135,14 @@ section "GET /webhook/$WEBHOOK/status — Auth-Fehler"
 CODE=$(get "$BASE_URL/webhook/$WEBHOOK/status")
 check "Kein Auth-Header → 401" "401" "$CODE"
 
-TS=$(ts); SIG=$(sig "$TS")
+TS=$(ts); SIG=$(sig "$TS" "$WEBHOOK")
 CODE=$(get "$BASE_URL/webhook/$WEBHOOK/status" \
   -H "X-Webhook-Timestamp: $TS" \
   -H "X-Webhook-Signature: sha256=000000deadbeef")
 check "Falsche Signatur → 401" "401" "$CODE"
 
 OLD_TS=$(($(ts) - 400))
-OLD_SIG=$(sig "$OLD_TS")
+OLD_SIG=$(sig "$OLD_TS" "$WEBHOOK")
 CODE=$(get "$BASE_URL/webhook/$WEBHOOK/status" \
   -H "X-Webhook-Timestamp: $OLD_TS" \
   -H "X-Webhook-Signature: $OLD_SIG")
@@ -158,7 +158,7 @@ check "Ungültiger Token → 401" "401" "$CODE"
 
 section "GET /webhook/doesnotexist/status — 404"
 
-TS=$(ts); SIG=$(sig "$TS")
+TS=$(ts); SIG=$(sig "$TS" "doesnotexist")
 CODE=$(get "$BASE_URL/webhook/doesnotexist/status" \
   -H "X-Webhook-Timestamp: $TS" \
   -H "X-Webhook-Signature: $SIG")
@@ -170,7 +170,7 @@ check "Unbekannte Webhook-ID → 404" "404" "$CODE"
 
 section "GET /webhook/$WEBHOOK/status — Erfolg"
 
-TS=$(ts); SIG=$(sig "$TS")
+TS=$(ts); SIG=$(sig "$TS" "$WEBHOOK")
 CODE=$(get "$BASE_URL/webhook/$WEBHOOK/status" \
   -H "X-Webhook-Timestamp: $TS" \
   -H "X-Webhook-Signature: $SIG")
@@ -189,7 +189,7 @@ CODE=$(post "$BASE_URL/webhook/$WEBHOOK/token?ttl=3600" \
 check "Falsche Signatur → 401" "401" "$CODE"
 
 OLD_TS=$(($(ts) - 400))
-OLD_SIG=$(sig "$OLD_TS")
+OLD_SIG=$(sig "$OLD_TS" "$WEBHOOK")
 CODE=$(post "$BASE_URL/webhook/$WEBHOOK/token?ttl=3600" \
   -H "X-Webhook-Timestamp: $OLD_TS" \
   -H "X-Webhook-Signature: $OLD_SIG")
@@ -201,7 +201,7 @@ check "Abgelaufener Timestamp → 401" "401" "$CODE"
 
 section "POST /webhook/doesnotexist/token — 404"
 
-TS=$(ts); SIG=$(sig "$TS")
+TS=$(ts); SIG=$(sig "$TS" "doesnotexist")
 CODE=$(post "$BASE_URL/webhook/doesnotexist/token?ttl=3600" \
   -H "X-Webhook-Timestamp: $TS" \
   -H "X-Webhook-Signature: $SIG")
@@ -213,38 +213,38 @@ check "Unbekannte Webhook-ID → 404" "404" "$CODE"
 
 section "POST /webhook/$WEBHOOK/token — Erfolg und Randwerte"
 
-TS=$(ts); SIG=$(sig "$TS")
+TS=$(ts); SIG=$(sig "$TS" "$WEBHOOK")
 CODE=$(post "$BASE_URL/webhook/$WEBHOOK/token?ttl=3600" \
   -H "X-Webhook-Timestamp: $TS" \
   -H "X-Webhook-Signature: $SIG")
 check "Token erstellen (Standard-TTL 3600s) → 200" "200" "$CODE"
 
-TS=$(ts); SIG=$(sig "$TS")
+TS=$(ts); SIG=$(sig "$TS" "$WEBHOOK")
 CODE=$(post "$BASE_URL/webhook/$WEBHOOK/token?ttl=300" \
   -H "X-Webhook-Timestamp: $TS" \
   -H "X-Webhook-Signature: $SIG")
 check "Token erstellen (TTL 300s) → 200" "200" "$CODE"
 
-TS=$(ts); SIG=$(sig "$TS")
+TS=$(ts); SIG=$(sig "$TS" "$WEBHOOK")
 CODE=$(post "$BASE_URL/webhook/$WEBHOOK/token?ttl=999999" \
   -H "X-Webhook-Timestamp: $TS" \
   -H "X-Webhook-Signature: $SIG")
 check "Token TTL wird auf 86400 geclampt → 200" "200" "$CODE"
 
-TS=$(ts); SIG=$(sig "$TS")
+TS=$(ts); SIG=$(sig "$TS" "$WEBHOOK")
 CODE=$(post "$BASE_URL/webhook/$WEBHOOK/token?ttl=0" \
   -H "X-Webhook-Timestamp: $TS" \
   -H "X-Webhook-Signature: $SIG")
 check "Token TTL 0 wird auf 1s geclampt → 200" "200" "$CODE"
 
 NOT_BEFORE="2099-01-01T02:00:00Z"
-TS=$(ts); SIG=$(sig "$TS")
+TS=$(ts); SIG=$(sig "$TS" "$WEBHOOK")
 CODE=$(post "$BASE_URL/webhook/$WEBHOOK/token?ttl=1800&not_before=$NOT_BEFORE" \
   -H "X-Webhook-Timestamp: $TS" \
   -H "X-Webhook-Signature: $SIG")
 check "Token mit not_before → 200" "200" "$CODE"
 
-TS=$(ts); SIG=$(sig "$TS")
+TS=$(ts); SIG=$(sig "$TS" "$WEBHOOK")
 CODE=$(post "$BASE_URL/webhook/$WEBHOOK/token?ttl=3600&not_before=kein-datum" \
   -H "X-Webhook-Timestamp: $TS" \
   -H "X-Webhook-Signature: $SIG")
@@ -256,7 +256,7 @@ check "Ungültiges not_before-Format → 400" "400" "$CODE"
 
 section "Token-Flow: erstellen → Status → verbraucht"
 
-TS=$(ts); SIG=$(sig "$TS")
+TS=$(ts); SIG=$(sig "$TS" "$WEBHOOK")
 RESPONSE=$(post_body "$BASE_URL/webhook/$WEBHOOK/token?ttl=60" \
   -H "X-Webhook-Timestamp: $TS" \
   -H "X-Webhook-Signature: $SIG" \
@@ -285,7 +285,7 @@ fi
 
 section "Token-Flow: erstellen → Trigger → verbraucht (200/500 falls Ansible fehlt)"
 
-TS=$(ts); SIG=$(sig "$TS")
+TS=$(ts); SIG=$(sig "$TS" "$WEBHOOK")
 RESPONSE=$(post_body "$BASE_URL/webhook/$WEBHOOK/token?ttl=60" \
   -H "X-Webhook-Timestamp: $TS" \
   -H "X-Webhook-Signature: $SIG")
@@ -314,7 +314,7 @@ fi
 section "Token mit not_before in der Zukunft — noch nicht gültig"
 
 NOT_BEFORE="2099-06-01T00:00:00Z"
-TS=$(ts); SIG=$(sig "$TS")
+TS=$(ts); SIG=$(sig "$TS" "$WEBHOOK")
 RESPONSE=$(post_body "$BASE_URL/webhook/$WEBHOOK/token?ttl=3600&not_before=$NOT_BEFORE" \
   -H "X-Webhook-Timestamp: $TS" \
   -H "X-Webhook-Signature: $SIG")

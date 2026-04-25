@@ -27,12 +27,15 @@ Alle HMAC-gesicherten Requests benötigen einen aktuellen Timestamp und eine Sig
 
 ```bash
 SECRET="7f3d9a12-b4c8-4e1f-9d6a-123456789abc"
+WEBHOOK_ID="ping"
 TS=$(date +%s)
 
-SIG="sha256=$(echo -n "$TS" \
+SIG="sha256=$(echo -n "${TS}.${WEBHOOK_ID}" \
   | openssl dgst -sha256 -hmac "$SECRET" \
   | awk '{print $2}')"
 ```
+
+Die HMAC-Nachricht ist `timestamp.webhook-id` — damit ist eine Signatur an genau diesen Webhook gebunden.
 
 ---
 
@@ -198,7 +201,7 @@ Timestamp älter als 5 Minuten:
 
 ```bash
 OLD_TS=1700000000
-OLD_SIG="sha256=$(echo -n "$OLD_TS" | openssl dgst -sha256 -hmac "$SECRET" | awk '{print $2}')"
+OLD_SIG="sha256=$(echo -n "$OLD_TS.ping" | openssl dgst -sha256 -hmac "$SECRET" | awk '{print $2}')"
 
 curl -s -X POST http://localhost:8080/webhook/ping \
   -H "X-Webhook-Timestamp: $OLD_TS" \
