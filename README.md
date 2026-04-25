@@ -52,14 +52,15 @@ Signatur berechnen (Bash):
 
 ```bash
 SECRET="7f3d9a12-b4c8-4e1f-9d6a-123456789abc"
+WEBHOOK_ID="mein-webhook"
 TS=$(date +%s)
 
-SIG="sha256=$(echo -n "$TS" \
+SIG="sha256=$(echo -n "${TS}.${WEBHOOK_ID}" \
   | openssl dgst -sha256 -hmac "$SECRET" \
   | awk '{print $2}')"
 ```
 
-Der Timestamp darf maximal 5 Minuten von der Serverzeit abweichen (Replay-Schutz).
+Die HMAC-Nachricht ist `timestamp.webhook-id` — damit ist eine Signatur an genau diesen Webhook gebunden und kann nicht für einen anderen verwendet werden. Der Timestamp darf maximal 5 Minuten von der Serverzeit abweichen (Replay-Schutz).
 
 ### Variante 2 — One-Time-Token
 
