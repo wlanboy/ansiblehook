@@ -61,7 +61,7 @@ class WebhookControllerTest {
     void status_returns200_withValidHmac() {
         when(ansibleService.isRunning(WEBHOOK_ID)).thenReturn(false);
         String ts = ts();
-        var response = controller.status(WEBHOOK_ID, ts, hmac(SECRET, ts), null);
+        var response = controller.status(WEBHOOK_ID, ts, hmac(SECRET, ts + "." + WEBHOOK_ID), null);
         assertThat(response.getStatusCode().value()).isEqualTo(200);
         assertThat(response.getBody()).containsEntry("running", false);
     }
@@ -75,7 +75,7 @@ class WebhookControllerTest {
     @Test
     void status_returns401_withExpiredTimestamp() {
         String old = String.valueOf(Instant.now().minus(Duration.ofMinutes(10)).getEpochSecond());
-        var response = controller.status(WEBHOOK_ID, old, hmac(SECRET, old), null);
+        var response = controller.status(WEBHOOK_ID, old, hmac(SECRET, old + "." + WEBHOOK_ID), null);
         assertThat(response.getStatusCode().value()).isEqualTo(401);
     }
 
@@ -130,7 +130,7 @@ class WebhookControllerTest {
     @Test
     void createToken_returns200_withValidHmac() {
         String ts = ts();
-        var response = controller.createToken(WEBHOOK_ID, ts, hmac(SECRET, ts), 3600, null);
+        var response = controller.createToken(WEBHOOK_ID, ts, hmac(SECRET, ts + "." + WEBHOOK_ID), 3600, null);
         assertThat(response.getStatusCode().value()).isEqualTo(200);
         assertThat(response.getBody()).containsKey("token");
         assertThat(response.getBody()).containsKey("expires_at");
@@ -146,7 +146,7 @@ class WebhookControllerTest {
     @Test
     void createToken_returns401_withExpiredTimestamp() {
         String old = String.valueOf(Instant.now().minus(Duration.ofMinutes(10)).getEpochSecond());
-        var response = controller.createToken(WEBHOOK_ID, old, hmac(SECRET, old), 3600, null);
+        var response = controller.createToken(WEBHOOK_ID, old, hmac(SECRET, old + "." + WEBHOOK_ID), 3600, null);
         assertThat(response.getStatusCode().value()).isEqualTo(401);
     }
 
@@ -154,7 +154,7 @@ class WebhookControllerTest {
     void createToken_includesNotBeforeInResponse() {
         String ts = ts();
         String notBefore = Instant.now().plusSeconds(300).toString();
-        var response = controller.createToken(WEBHOOK_ID, ts, hmac(SECRET, ts), 3600, notBefore);
+        var response = controller.createToken(WEBHOOK_ID, ts, hmac(SECRET, ts + "." + WEBHOOK_ID), 3600, notBefore);
         assertThat(response.getStatusCode().value()).isEqualTo(200);
         assertThat(response.getBody()).containsEntry("not_before", notBefore);
     }
@@ -162,14 +162,14 @@ class WebhookControllerTest {
     @Test
     void createToken_returns400_forInvalidNotBefore() {
         String ts = ts();
-        var response = controller.createToken(WEBHOOK_ID, ts, hmac(SECRET, ts), 3600, "not-a-date");
+        var response = controller.createToken(WEBHOOK_ID, ts, hmac(SECRET, ts + "." + WEBHOOK_ID), 3600, "not-a-date");
         assertThat(response.getStatusCode().value()).isEqualTo(400);
     }
 
     @Test
     void createToken_defaultsNotBeforeToNow_whenAbsent() {
         String ts = ts();
-        var response = controller.createToken(WEBHOOK_ID, ts, hmac(SECRET, ts), 3600, null);
+        var response = controller.createToken(WEBHOOK_ID, ts, hmac(SECRET, ts + "." + WEBHOOK_ID), 3600, null);
         assertThat(response.getStatusCode().value()).isEqualTo(200);
         Instant notBefore = Instant.parse((String) response.getBody().get("not_before"));
         assertThat(notBefore).isBeforeOrEqualTo(Instant.now());
@@ -178,7 +178,7 @@ class WebhookControllerTest {
     @Test
     void createToken_clampsTtlToMaximum() {
         String ts = ts();
-        var response = controller.createToken(WEBHOOK_ID, ts, hmac(SECRET, ts), 999_999L, null);
+        var response = controller.createToken(WEBHOOK_ID, ts, hmac(SECRET, ts + "." + WEBHOOK_ID), 999_999L, null);
         assertThat(response.getStatusCode().value()).isEqualTo(200);
         Instant expiresAt = Instant.parse((String) response.getBody().get("expires_at"));
         Duration actualTtl = Duration.between(Instant.now(), expiresAt);
@@ -188,7 +188,7 @@ class WebhookControllerTest {
     @Test
     void createToken_clampsZeroTtlToOne() {
         String ts = ts();
-        var response = controller.createToken(WEBHOOK_ID, ts, hmac(SECRET, ts), 0L, null);
+        var response = controller.createToken(WEBHOOK_ID, ts, hmac(SECRET, ts + "." + WEBHOOK_ID), 0L, null);
         assertThat(response.getStatusCode().value()).isEqualTo(200);
         Instant expiresAt = Instant.parse((String) response.getBody().get("expires_at"));
         assertThat(expiresAt).isAfter(Instant.now());
@@ -213,7 +213,7 @@ class WebhookControllerTest {
     void trigger_returns200_withValidHmac() {
         when(ansibleService.execute(eq(WEBHOOK_ID), any())).thenReturn(Mono.just("ok"));
         String ts = ts();
-        var response = controller.trigger(WEBHOOK_ID, ts, hmac(SECRET, ts), null).block();
+        var response = controller.trigger(WEBHOOK_ID, ts, hmac(SECRET, ts + "." + WEBHOOK_ID), null).block();
         assertThat(response.getStatusCode().value()).isEqualTo(200);
     }
 
@@ -226,7 +226,7 @@ class WebhookControllerTest {
     @Test
     void trigger_returns401_withExpiredTimestamp() {
         String old = String.valueOf(Instant.now().minus(Duration.ofMinutes(10)).getEpochSecond());
-        var response = controller.trigger(WEBHOOK_ID, old, hmac(SECRET, old), null).block();
+        var response = controller.trigger(WEBHOOK_ID, old, hmac(SECRET, old + "." + WEBHOOK_ID), null).block();
         assertThat(response.getStatusCode().value()).isEqualTo(401);
     }
 
@@ -272,7 +272,7 @@ class WebhookControllerTest {
         when(ansibleService.execute(eq(WEBHOOK_ID), any()))
                 .thenReturn(Mono.error(new PlaybookAlreadyRunningException(WEBHOOK_ID)));
         String ts = ts();
-        var response = controller.trigger(WEBHOOK_ID, ts, hmac(SECRET, ts), null).block();
+        var response = controller.trigger(WEBHOOK_ID, ts, hmac(SECRET, ts + "." + WEBHOOK_ID), null).block();
         assertThat(response.getStatusCode().value()).isEqualTo(409);
     }
 
@@ -281,7 +281,7 @@ class WebhookControllerTest {
         when(ansibleService.execute(eq(WEBHOOK_ID), any()))
                 .thenReturn(Mono.error(new PlaybookFailedException("error output", 1)));
         String ts = ts();
-        var response = controller.trigger(WEBHOOK_ID, ts, hmac(SECRET, ts), null).block();
+        var response = controller.trigger(WEBHOOK_ID, ts, hmac(SECRET, ts + "." + WEBHOOK_ID), null).block();
         assertThat(response.getStatusCode().value()).isEqualTo(500);
     }
 

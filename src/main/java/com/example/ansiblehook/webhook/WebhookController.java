@@ -67,7 +67,7 @@ public class WebhookController {
                 log.warn("Status check for webhook '{}' rejected: invalid timestamp", id);
                 return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
             }
-            if (!tokenService.validHmac(props.secret(), timestamp.getBytes(StandardCharsets.UTF_8), signature)) {
+            if (!tokenService.validHmac(props.secret(), (timestamp + "." + id).getBytes(StandardCharsets.UTF_8), signature)) {
                 log.warn("Status check for webhook '{}' rejected: invalid signature", id);
                 return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
             }
@@ -103,7 +103,7 @@ public class WebhookController {
             if (!tokenService.validTimestamp(timestamp)) {
                 return Mono.just(ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid timestamp"));
             }
-            if (!tokenService.validHmac(props.secret(), timestamp.getBytes(StandardCharsets.UTF_8), signature)) {
+            if (!tokenService.validHmac(props.secret(), (timestamp + "." + id).getBytes(StandardCharsets.UTF_8), signature)) {
                 return Mono.just(ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid signature"));
             }
         }
@@ -136,7 +136,7 @@ public class WebhookController {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
 
-        if (!tokenService.validHmac(props.secret(), timestamp.getBytes(StandardCharsets.UTF_8), signature)) {
+        if (!tokenService.validHmac(props.secret(), (timestamp + "." + id).getBytes(StandardCharsets.UTF_8), signature)) {
             log.warn("Token request for webhook '{}' rejected: invalid signature", id);
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
