@@ -58,11 +58,27 @@ ansiblehook:
 
 Der Map-Key (`mein-webhook`) ist gleichzeitig die URL-ID. Das `secret` ist der HMAC-Key — es wird nie direkt übertragen.
 
+Ein sicheres Secret lässt sich einmalig erzeugen mit:
+
+```bash
+openssl rand -hex 32
+```
+
 Der resultierende Befehl:
 
 ```bash
 ansible-playbook -i hosts playbooks/site.yml --limit myhost --tags all --extra-vars "env=prod"
 ```
+
+## Voraussetzungen
+
+| Komponente | Version | Zweck |
+| --- | --- | --- |
+| Java | 25+ | Laufzeit |
+| Maven | 3.9+ | Build |
+| Ansible | beliebig | Playbook-Ausführung |
+
+Ansible muss auf demselben Server installiert und im `PATH` des Prozesses erreichbar sein, unter dem der Service läuft.
 
 ## Start
 
@@ -123,6 +139,33 @@ curl -X POST http://localhost:8080/webhook/mein-webhook \
   -H "X-Webhook-Signature: $SIG" \
   --output ansible.log
 ```
+
+## GitHub Actions
+
+Das Secret wird als Repository-Secret (`WEBHOOK_SECRET`) hinterlegt, die Signatur bei jedem Workflow-Lauf frisch berechnet:
+
+```yaml
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Ansible Playbook
+        env:
+          SECRET: ${{ secrets.WEBHOOK_SECRET }}
+          WEBHOOK_ID: mein-webhook
+          HOST: https://deploy.example.com
+        run: |
+          TS=$(date +%s)
+          SIG="sha256=$(echo -n "${TS}.${WEBHOOK_ID}" \
+            | openssl dgst -sha256 -hmac "$SECRET" \
+            | awk '{print $2}')"
+
+          curl -sf -X POST "$HOST/webhook/$WEBHOOK_ID" \
+            -H "X-Webhook-Timestamp: $TS" \
+            -H "X-Webhook-Signature: $SIG"
+```
+
+`-sf` bricht den Workflow bei HTTP-Fehler ab (`-f`) und unterdrückt den Fortschrittsbalken (`-s`). Der Response-Body mit den Ansible-Logs wird auf stdout ausgegeben und ist im Actions-Log sichtbar.
 
 ## Status abfragen
 
