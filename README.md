@@ -2,9 +2,41 @@
 
 HTTP-Webhook-Service zum Auslösen von Ansible-Playbooks über eine gesicherte REST-API.
 
-Ein typischer Anwendungsfall ist der kontrollierte Deploy-Zugriff für Entwickler: Statt ihnen direkten SSH-Zugang zum Deployment-Server oder Zugriff auf Ansible-Credentials zu geben, stellt ein Operator vorab einen zeitlich begrenzten One-Time-Token aus. Der Entwickler kann damit genau ein Playbook einmalig auslösen — ohne Kenntnisse über Inventories, Vault-Passwörter oder Serverstruktur. Nach der Nutzung ist der Token verbraucht. Optional lässt sich mit `not_before` ein Startzeitpunkt festlegen, sodass ein Token bereits im Voraus ausgestellt, aber erst zum geplanten Deployment-Fenster einlösbar ist.
+Ein typischer Anwendungsfall ist der kontrollierte Deploy-Zugriff für Entwickler: Statt ihnen direkten SSH-Zugang zum Deployment-Server oder Zugriff auf Ansible-Credentials zu geben, stellt ein Operator vorab einen zeitlich begrenzten One-Time-Token aus.
+Der Entwickler kann damit genau ein Playbook einmalig auslösen — ohne Kenntnisse über Inventories, Vault-Passwörter oder Serverstruktur. Nach der Nutzung ist der Token verbraucht.
+Optional lässt sich mit `not_before` ein Startzeitpunkt festlegen, sodass ein Token bereits im Voraus ausgestellt, aber erst zum geplanten Deployment-Fenster einlösbar ist.
 
 Für automatisierte Pipelines (CI/CD, Monitoring) steht alternativ eine dauerhafte HMAC-SHA256-Signatur zur Verfügung. Läuft ein Playbook bereits, wird ein zweiter Request mit `409 Conflict` abgelehnt. Die vollständigen Ansible-Logs werden als Response-Body zurückgegeben.
+
+## HMAC-SHA256
+
+HMAC-SHA256 (Hash-based Message Authentication Code) schützt die Webhook-Endpunkte, ohne das gemeinsame Secret jemals über das Netzwerk zu übertragen. Anstatt das Secret direkt als Passwort mitzuschicken, berechnet der Aufrufer daraus eine Signatur über eine kontextspezifische Nachricht — der Server prüft die Signatur, ohne das Secret zu kennen (er berechnet sie selbst und vergleicht).
+
+### Warum HMAC statt Bearer-Token?
+
+Ein statisches Bearer-Token ist ein Shared Secret: Wer es einmal abfängt, kann beliebig viele Requests stellen. HMAC löst zwei Probleme gleichzeitig:
+
+- **Replay-Schutz** — Die Signatur schließt den aktuellen Unix-Timestamp ein. Der Server akzeptiert nur Requests, deren Timestamp maximal 5 Minuten von der Serverzeit abweicht. Ein abgefangener Request ist nach dieser Zeitspanne wertlos.
+- **Webhook-Bindung** — Die Signatur schließt die Webhook-ID ein. Eine gültige Signatur für `/webhook/deploy` kann nicht für `/webhook/rollback` wiederverwendet werden, selbst wenn beide dasselbe Secret teilen.
+- **Vorab-Ausstellung** — Soll ein Deployment zu einem festen Zeitpunkt ausgelöst werden, kann ein HMAC-gesicherter Request einen One-Time-Token mit `not_before` erzeugen und diesen vorab an den Ausführenden weitergeben. Der Token wird erst ab dem vereinbarten Zeitpunkt akzeptiert — das eigentliche Deployment benötigt dann weder Secret noch HMAC-Berechnung.
+- **Pipeline-Eignung** — Automatisierte Systeme (CI/CD, Monitoring) können das Secret als verschlüsselte Umgebungsvariable hinterlegen und die Signatur bei jedem Request dynamisch berechnen. Es muss kein Token vorab ausgestellt oder rotiert werden — das Secret bleibt dauerhaft gültig, solange es nicht kompromittiert wird.
+
+### Aufbau der Signatur
+
+```text
+Nachricht  = "<unix-timestamp>.<webhook-id>"
+Signatur   = HMAC-SHA256(key=secret, message=Nachricht)
+Header     = "sha256=<hex-digest>"
+```
+
+Beispiel für Webhook-ID `mein-webhook` zum Zeitpunkt `1745660000`:
+
+```text
+Nachricht:  "1745660000.mein-webhook"
+Signatur:   sha256=4a7f...
+```
+
+Der Server berechnet dieselbe Signatur mit dem konfigurierten Secret und vergleicht sie zeitsicher (constant-time). Stimmen Signatur und Zeitfenster überein, wird der Request verarbeitet.
 
 ## Konfiguration
 
@@ -28,7 +60,7 @@ Der Map-Key (`mein-webhook`) ist gleichzeitig die URL-ID. Das `secret` ist der H
 
 Der resultierende Befehl:
 
-```
+```bash
 ansible-playbook -i hosts playbooks/site.yml --limit myhost --tags all --extra-vars "env=prod"
 ```
 
@@ -118,7 +150,7 @@ curl -X POST "http://localhost:8080/webhook/mein-webhook/token?ttl=3600" \
 Parameter:
 
 | Parameter | Pflicht | Beschreibung |
-|-----------|---------|--------------|
+| --- | --- | --- |
 | `ttl` | nein | Gültigkeitsdauer in Sekunden (Standard: `3600`, Maximum: `86400`) |
 | `not_before` | nein | Frühester Nutzungszeitpunkt als ISO-8601-Timestamp (Standard: sofort) |
 
@@ -169,7 +201,7 @@ Das Token ist zwischen `02:00` und `02:30 Uhr` einmalig einlösbar. Vor `not_bef
 ## HTTP-Statuscodes
 
 | Status | Bedeutung |
-|--------|-----------|
+| --- | --- |
 | `200 OK` | Playbook erfolgreich — Body enthält die Ansible-Logs |
 | `400 Bad Request` | Ungültiger Parameter (z. B. falsches Datumsformat bei `not_before`) |
 | `401 Unauthorized` | Fehlende, ungültige oder abgelaufene Authentifizierung |
