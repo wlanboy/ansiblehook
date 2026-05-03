@@ -285,6 +285,15 @@ class WebhookControllerTest {
         assertThat(response.getStatusCode().value()).isEqualTo(500);
     }
 
+    @Test
+    void trigger_returns500_forGenericException() {
+        when(ansibleService.execute(eq(WEBHOOK_ID), any()))
+                .thenReturn(Mono.error(new RuntimeException("unexpected")));
+        String ts = ts();
+        var response = controller.trigger(WEBHOOK_ID, ts, hmac(SECRET, ts + "." + WEBHOOK_ID), null).block();
+        assertThat(response.getStatusCode().value()).isEqualTo(500);
+    }
+
     // ------------------------------------------------------------
     // Hilfsmethoden
     // ------------------------------------------------------------
