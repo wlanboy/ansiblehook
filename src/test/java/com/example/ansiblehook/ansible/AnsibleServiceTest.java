@@ -245,4 +245,17 @@ class AnsibleServiceTest {
                 .expectError(java.io.IOException.class)
                 .verify();
     }
+
+    // Nach einem fehlgeschlagenen Start muss der running-Slot freigegeben werden,
+    // damit der gleiche Webhook erneut ausgelöst werden kann.
+    @Test
+    void execute_freesSlot_afterStartError() throws Exception {
+        when(pb.start()).thenThrow(new java.io.IOException("ansible-playbook not found"));
+
+        StepVerifier.create(service.execute("play", props("/tmp", null, null)))
+                .expectError(java.io.IOException.class)
+                .verify();
+
+        assertThat(service.isRunning("play")).isFalse();
+    }
 }
