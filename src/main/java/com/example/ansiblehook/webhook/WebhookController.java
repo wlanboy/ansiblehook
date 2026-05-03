@@ -114,7 +114,12 @@ public class WebhookController {
                         ex -> Mono.just(ResponseEntity.status(HttpStatus.CONFLICT).body(ex.getMessage())))
                 .onErrorResume(PlaybookFailedException.class,
                         ex -> Mono.just(ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                                .body("Playbook failed")));
+                                .body("Playbook failed")))
+                .onErrorResume(ex -> {
+                    log.error("Unexpected error executing webhook '{}'", id, ex);
+                    return Mono.just(ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                            .body("Internal error"));
+                });
     }
 
     @PostMapping("/webhook/{id}/token")
