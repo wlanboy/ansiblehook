@@ -1,5 +1,7 @@
 package com.example.ansiblehook.ott;
 
+import com.example.ansiblehook.HmacTestSupport;
+
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -184,14 +186,6 @@ class TokenServiceTest {
     // Hilfsmethode
     // ------------------------------------------------------------
     static String hmac(String secret, String message) {
-        try {
-            javax.crypto.Mac mac = javax.crypto.Mac.getInstance("HmacSHA256");
-            mac.init(new javax.crypto.spec.SecretKeySpec(
-                    secret.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
-            byte[] hash = mac.doFinal(message.getBytes(StandardCharsets.UTF_8));
-            return "sha256=" + java.util.HexFormat.of().formatHex(hash);
-        } catch (Exception e) {
-            throw new RuntimeException(e);
-        }
+        return HmacTestSupport.hmac(secret, message);
     }
 }

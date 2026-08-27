@@ -54,23 +54,8 @@ public class WebhookController {
             return ResponseEntity.notFound().build();
         }
 
-        if (token != null) {
-            if (!tokenService.validateAndConsume(id, token)) {
-                log.warn("Status check for webhook '{}' rejected: invalid or expired one-time token", id);
-                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
-            }
-        } else {
-            if (timestamp == null || signature == null) {
-                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
-            }
-            if (!tokenService.validTimestamp(timestamp)) {
-                log.warn("Status check for webhook '{}' rejected: invalid timestamp", id);
-                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
-            }
-            if (!tokenService.validHmac(props.secret(), (timestamp + "." + id).getBytes(StandardCharsets.UTF_8), signature)) {
-                log.warn("Status check for webhook '{}' rejected: invalid signature", id);
-                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
-            }
+        if (authenticate(id, props, new WebhookCredentials(timestamp, signature, token)) != null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
 
         boolean running = ansibleService.isRunning(id);
@@ -90,22 +75,9 @@ public class WebhookController {
             return Mono.just(ResponseEntity.notFound().build());
         }
 
-        if (token != null) {
-            if (!tokenService.validateAndConsume(id, token)) {
-                log.warn("Webhook '{}' rejected: invalid or expired one-time token", id);
-                return Mono.just(ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid or expired token"));
-            }
-        } else {
-            if (timestamp == null || signature == null) {
-                return Mono.just(ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                        .body("Provide either X-Webhook-Token or X-Webhook-Timestamp + X-Webhook-Signature"));
-            }
-            if (!tokenService.validTimestamp(timestamp)) {
-                return Mono.just(ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid timestamp"));
-            }
-            if (!tokenService.validHmac(props.secret(), (timestamp + "." + id).getBytes(StandardCharsets.UTF_8), signature)) {
-                return Mono.just(ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid signature"));
-            }
+        String authError = authenticate(id, props, new WebhookCredentials(timestamp, signature, token));
+        if (authError != null) {
+            return Mono.just(ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(authError));
         }
 
         return ansibleService.execute(id, props)
@@ -136,13 +108,7 @@ public class WebhookController {
             return ResponseEntity.notFound().build();
         }
 
-        if (!tokenService.validTimestamp(timestamp)) {
-            log.warn("Token request for webhook '{}' rejected: invalid timestamp", id);
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
-        }
-
-        if (!tokenService.validHmac(props.secret(), (timestamp + "." + id).getBytes(StandardCharsets.UTF_8), signature)) {
-            log.warn("Token request for webhook '{}' rejected: invalid signature", id);
+        if (authenticate(id, props, new WebhookCredentials(timestamp, signature, null)) != null) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
 
@@ -161,5 +127,33 @@ public class WebhookController {
                 "webhook_id", id,
                 "not_before", created.notBefore().toString(),
                 "expires_at", created.expiresAt().toString()));
+    }
+
+    /**
+     * Authenticates via one-time token if present, otherwise via HMAC signature.
+     * Returns null when authenticated, or an error message describing the failure.
+     */
+    private String authenticate(String id, WebhookProperties props, WebhookCredentials credentials) {
+        if (credentials.token() != null) {
+            if (!tokenService.validateAndConsume(id, credentials.token())) {
+                log.warn("Webhook '{}' rejected: invalid or expired one-time token", id);
+                return "Invalid or expired token";
+            }
+            return null;
+        }
+
+        if (credentials.timestamp() == null || credentials.signature() == null) {
+            return "Provide either X-Webhook-Token or X-Webhook-Timestamp + X-Webhook-Signature";
+        }
+        if (!tokenService.validTimestamp(credentials.timestamp())) {
+            log.warn("Webhook '{}' rejected: invalid timestamp", id);
+            return "Invalid timestamp";
+        }
+        String message = credentials.timestamp() + "." + id;
+        if (!tokenService.validHmac(props.secret(), message.getBytes(StandardCharsets.UTF_8), credentials.signature())) {
+            log.warn("Webhook '{}' rejected: invalid signature", id);
+            return "Invalid signature";
+        }
+        return null;
     }
 }

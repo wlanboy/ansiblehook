@@ -1,6 +1,7 @@
 package com.example.ansiblehook.webhook;
 
 import com.example.ansiblehook.AnsiblehookProperties;
+import com.example.ansiblehook.HmacTestSupport;
 import com.example.ansiblehook.WebhookProperties;
 import com.example.ansiblehook.ansible.AnsibleService;
 import com.example.ansiblehook.ansible.PlaybookAlreadyRunningException;
@@ -11,7 +12,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import reactor.core.publisher.Mono;
 
-import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Map;
@@ -303,14 +303,6 @@ class WebhookControllerTest {
     }
 
     static String hmac(String secret, String message) {
-        try {
-            javax.crypto.Mac mac = javax.crypto.Mac.getInstance("HmacSHA256");
-            mac.init(new javax.crypto.spec.SecretKeySpec(
-                    secret.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
-            byte[] hash = mac.doFinal(message.getBytes(StandardCharsets.UTF_8));
-            return "sha256=" + java.util.HexFormat.of().formatHex(hash);
-        } catch (Exception e) {
-            throw new RuntimeException(e);
-        }
+        return HmacTestSupport.hmac(secret, message);
     }
 }

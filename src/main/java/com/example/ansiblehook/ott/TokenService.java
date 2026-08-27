@@ -76,7 +76,7 @@ public class TokenService {
             mac.init(new SecretKeySpec(secret.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
             byte[] expected = mac.doFinal(message);
 
-            String expectedHex = HMAC_PREFIX + bytesToHex(expected);
+            String expectedHex = HMAC_PREFIX + HexFormat.of().formatHex(expected);
 
             return MessageDigest.isEqual(
                     expectedHex.getBytes(StandardCharsets.UTF_8),
@@ -100,13 +100,6 @@ public class TokenService {
         } catch (Exception e) {
             return false;
         }
-    }
-
-    private static String bytesToHex(byte[] bytes) {
-        StringBuilder sb = new StringBuilder(bytes.length * 2);
-        for (byte b : bytes)
-            sb.append(String.format("%02x", b));
-        return sb.toString();
     }
 
     @Scheduled(fixedDelay = 60_000)
