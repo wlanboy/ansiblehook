@@ -12,7 +12,6 @@ import reactor.core.scheduler.Schedulers;
 import java.io.File;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -46,7 +45,7 @@ public class AnsibleService {
     }
 
     private String runPlaybook(WebhookProperties props) throws Exception {
-        ProcessBuilder pb = newProcessBuilder(buildCommand(props));
+        ProcessBuilder pb = newProcessBuilder(props.toCommand());
         pb.directory(resolveFolder(props.folder()));
         pb.redirectErrorStream(true);
 
@@ -58,25 +57,6 @@ public class AnsibleService {
             throw new PlaybookFailedException(output, exitCode);
         }
         return output;
-    }
-
-    private List<String> buildCommand(WebhookProperties props) {
-        List<String> cmd = new ArrayList<>(List.of(
-                "ansible-playbook", "-i", props.hosts(), props.playbook()
-        ));
-        if (props.limit() != null && !props.limit().isBlank()) {
-            cmd.addAll(List.of("--limit", props.limit()));
-        }
-        if (props.tags() != null && !props.tags().isBlank()) {
-            cmd.addAll(List.of("--tags", props.tags()));
-        }
-        if (props.extraVars() != null && !props.extraVars().isBlank()) {
-            cmd.addAll(List.of("--extra-vars", props.extraVars()));
-        }
-        if (props.vaultPasswordFile() != null && !props.vaultPasswordFile().isBlank()) {
-            cmd.addAll(List.of("--vault-password-file", props.vaultPasswordFile()));
-        }
-        return cmd;
     }
 
     private File resolveFolder(String folder) {
